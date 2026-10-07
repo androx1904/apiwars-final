@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Facturación electrónica</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f1f4f2;--panel:#fff;--ink:#14231e;--mute:#586a63;--line:#d8e0dc;--acc:#0a6b57;--accink:#fff;--soft:#e2efe9;--warn:#a85208;--bad:#a52a2a;color-scheme:light}
+@media(prefers-color-scheme:dark){:root{--bg:#0e1714;--panel:#16221e;--ink:#e6efeb;--mute:#93a69e;--line:#273630;--acc:#3fc3a0;--accink:#06231b;--soft:#1b2f28;--warn:#e6a15a;--bad:#ef8a8a;color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font:15px/1.5 "IBM Plex Sans",system-ui,sans-serif;background:var(--bg);color:var(--ink);display:grid;grid-template-columns:200px 1fr}
+nav{background:var(--panel);border-right:1px solid var(--line);padding:20px 12px;display:flex;flex-direction:column;gap:4px;position:sticky;top:0;height:100vh}
+nav b{font-size:17px;padding:0 10px 14px}
+nav button{all:unset;cursor:pointer;padding:9px 10px;border-radius:6px;color:var(--mute);font-weight:500}
+nav button:hover{background:var(--soft)}
+nav button[aria-current=true]{background:var(--soft);color:var(--acc)}
+nav button:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+main{padding:28px;max-width:960px;width:100%}
+h1{font-size:24px;margin:0 0 4px;font-weight:600}
+h2{font-size:16px;margin:0 0 12px;font-weight:600}
+.sub{color:var(--mute);margin:0 0 22px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px;margin-bottom:18px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.stat{border-left:3px solid var(--acc);padding:2px 12px}
+.stat span{display:block;color:var(--mute);font-size:13px}
+.stat strong{font-size:22px;font-variant-numeric:tabular-nums}
+form,.row{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+label{display:flex;flex-direction:column;gap:3px;font-size:13px;color:var(--mute);flex:1 1 150px}
+input,select,textarea{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);width:100%}
+textarea{min-height:70px;resize:vertical}
+.btn{font:inherit;font-weight:500;cursor:pointer;padding:9px 16px;border-radius:6px;border:1px solid var(--acc);background:var(--acc);color:var(--accink)}
+.btn.ghost{background:transparent;color:var(--acc)}
+.btn:disabled{opacity:.5;cursor:default}
+.list>div{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--line);flex-wrap:wrap}
+.list>div:first-child{border-top:0}
+.list small{color:var(--mute);display:block}
+.num{font-variant-numeric:tabular-nums;font-weight:500;text-align:right}
+.tag{font-size:12px;padding:2px 8px;border-radius:99px;background:var(--soft);color:var(--acc);height:fit-content}
+.tag.w{color:var(--warn)}
+.empty{color:var(--mute);padding:8px 0}
+.totals{margin-left:auto;min-width:220px;font-variant-numeric:tabular-nums}
+.totals div{display:flex;justify-content:space-between;padding:2px 0}
+.totals .t{font-size:20px;font-weight:600;border-top:2px solid var(--ink);margin-top:6px;padding-top:6px}
+.qr{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+.qr img{width:160px;height:160px;background:#fff;border:1px solid var(--line);border-radius:6px;padding:6px}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(76px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:6px;display:none;z-index:9;max-width:90%}
+#mode{font-size:13px;color:var(--mute);margin-top:auto;padding:0 10px}
+.help{font-size:13px;color:var(--mute);line-height:1.45;margin:8px 0 0}
+.help a{color:var(--acc)}
+@media(max-width:720px){
+ body{grid-template-columns:1fr}
+ nav{position:fixed;bottom:0;left:0;right:0;top:auto;height:auto;flex-direction:row;border-right:0;border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px));z-index:5;justify-content:space-around}
+ nav b,#mode{display:none}
+ nav button{padding:8px 6px;font-size:12.5px;text-align:center}
+ main{padding:20px 16px calc(84px + env(safe-area-inset-bottom,0px));padding-top:calc(20px + env(safe-area-inset-top,0px))}
+}
+</style>
+</head>
+<body>
+<nav id="nav">
+ <b>Facturación</b>
+ <button data-v="resumen">Resumen</button>
+ <button data-v="clientes">Clientes</button>
+ <button data-v="productos">Productos</button>
+ <button data-v="facturas">Facturas</button>
+ <button data-v="cobros">Cobros QR</button>
+ <div id="mode"></div>
+</nav>
+<main id="main"></main>
+<div id="toast" role="status"></div>
+
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const cop=n=>new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(n||0);
+const store={get(k){try{return localStorage.getItem(k)}catch{return null}},set(k,v){try{localStorage.setItem(k,v)}catch{}}};
+
+/* ---------- Configuración persistente ---------- */
+let base=(store.get('apiBase')||'')==='local'?'':store.get('apiBase')||'';
+let akey=store.get('akey')||'';
+let ft=null;try{ft=JSON.parse(store.get('ftoken')||'null')}catch{}
+const ftOk=()=>ft&&ft.exp>Date.now();
+let fcred=null;try{fcred=JSON.parse(store.get('fcred')||'null')}catch{}
+let renewing=null;
+
+/* MongoDB Atlas Data API */
+let mongo=null;try{mongo=JSON.parse(store.get('mongo')||'null')}catch{}
+const mongoOk=()=>!!(mongo?.url&&mongo?.key&&mongo?.dataSource&&mongo?.database);
+
+async function newToken(c){
+ const r=await api('/api/auth/factus/token','POST',c);
+ ft={t:r.access_token,r:r.refresh_token,exp:Date.parse(r.expires_at)};
+ store.set('ftoken',JSON.stringify(ft));
+ if(mongoOk())await mongoSaveConfig();
+ return ft;
+}
+async function ensureToken(){
+ if(renewing)return renewing;
+ if(ft&&ft.exp-Date.now()>60000)return;
+ if(!ft?.r&&!fcred)return;
+ renewing=(async()=>{try{await newToken(ft?.r?{refresh_token:ft.r}:fcred)}catch{if(fcred)try{await newToken(fcred)}catch{}}finally{renewing=null}})();
+ return renewing;
+}
+
+let live=!!base;
+let cloud=mongoOk();
+const S={clientes:[],productos:[],facturas:[],pagos:[]};
+let view='resumen',cart=[],cust={},timers=[];
+
+/* ---------- MongoDB Atlas Data API helpers ---------- */
+async function mongoAction(action,body){
+ if(!mongoOk())throw new Error('MongoDB no configurado');
+ const url=mongo.url.replace(/\/$/,'')+'/action/'+action;
+ const r=await fetch(url,{
+  method:'POST',
+  headers:{
+   'Content-Type':'application/json',
+   'Accept':'application/json',
+   'api-key':mongo.key
+  },
+  body:JSON.stringify({
+   dataSource:mongo.dataSource,
+   database:mongo.database,
+   ...body
+  })
+ });
+ const d=await r.json().catch(()=>({}));
+ if(!r.ok){
+  const msg=d?.error||d?.message||r.statusText||'Error MongoDB';
+  throw new Error(msg);
+ }
+ return d;
+}
+
+async function mongoFind(collection,filter={},sort={created_at:-1},limit=500){
+ const r=await mongoAction('find',{collection,filter,sort,limit});
+ return (r.documents||[]).map(d=>{const{_id,...rest}=d;return{...rest,id:rest.id||_id}});
+}
+async function mongoFindOne(collection,filter){
+ const r=await mongoAction('findOne',{collection,filter});
+ if(!r.document)return null;
+ const{_id,...rest}=r.document;
+ return{...rest,id:rest.id||_id};
+}
+async function mongoInsert(collection,document){
+ const doc={...document};
+ delete doc._id;
+ const r=await mongoAction('insertOne',{collection,document:doc});
+ return{...doc,id:doc.id||r.insertedId};
+}
+async function mongoUpdate(collection,filter,update){
+ await mongoAction('updateOne',{collection,filter,update:{'$set':update}});
+ return update;
+}
+async function mongoDelete(collection,filter){
+ await mongoAction('deleteOne',{collection,filter});
+}
+async function mongoReplace(collection,filter,document){
+ const doc={...document};
+ delete doc._id;
+ await mongoAction('replaceOne',{collection,filter,replacement:doc,upsert:true});
+ return doc;
+}
+
+async function mongoSaveConfig(){
+ if(!mongoOk())return;
+ const cfg={
+  id:'app',
+  ftoken:ft,
+  fcred:fcred,
+  n:mem.n||0,
+  updated_at:new Date().toISOString()
+ };
+ await mongoReplace('config',{id:'app'},cfg);
+}
+async function mongoLoadConfig(){
+ if(!mongoOk())return;
+ const cfg=await mongoFindOne('config',{id:'app'});
+ if(!cfg)return;
+ if(cfg.ftoken){ft=cfg.ftoken;store.set('ftoken',JSON.stringify(ft))}
+ if(cfg.fcred){fcred=cfg.fcred;store.set('fcred',JSON.stringify(fcred))}
+ if(typeof cfg.n==='number')mem.n=cfg.n;
+}
+
+/* ---------- Modo local (fallback) ---------- */
+const mem={clientes:[],productos:[],facturas:[],pagos:[],n:0,tokens:{}};
+try{Object.assign(mem,JSON.parse(store.get('fact_db')||'{}'))}catch{}
+const persist=()=>store.set('fact_db',JSON.stringify(mem));
+
+function mock(path,method,b,tok){
+ const p=path.split('/').filter(Boolean).slice(1),r=p[0],id=p[1],now=Date.now();
+ const fail=(s,m)=>{const e=new Error(m);e.status=s;throw e};
+ if(r==='customers'){
+  if(p[1]==='search'){const c=mem.clientes.find(c=>c.identification===p[2]);return c||fail(404,'Cliente no encontrado')}
+  if(method==='DELETE'){mem.clientes=mem.clientes.filter(c=>c.id!==id);return{}}
+  if(method==='GET')return mem.clientes;
+  const ex=mem.clientes.find(c=>c.identification===b.identification);
+  if(ex)return Object.assign(ex,b);
+  const n={...b,id:String(now)};mem.clientes.push(n);return n}
+ if(r==='products'){
+  if(method==='DELETE'){mem.productos=mem.productos.filter(x=>x.id!==id);return{}}
+  if(method==='GET')return mem.productos;
+  const i=mem.productos.findIndex(x=>x.code===b.code),pr={...b,id:i>=0?mem.productos[i].id:String(now)};
+  i>=0?mem.productos[i]=pr:mem.productos.push(pr);return pr}
+ if(r==='bills'){
+  if(method==='GET')return{rows:mem.facturas,lastPage:1};
+  const f={...b,id:String(now),status:1,created_at:new Date().toISOString(),number:'LOC-'+String(++mem.n).padStart(5,'0'),mode:'local',token:mem.tokens?.[tok]?.exp>now?tok.slice(-6):undefined};
+  mem.facturas.unshift(f);return{bill:f}}
+ if(r==='collections'){
+  if(id){const x=mem.pagos.find(x=>x.reference===id)||fail(404,'Pago no encontrado'),e=now-x.t;
+   if(p[2]==='confirm')x.status='paid';else if(x.status!=='paid')x.status=e>8000?'paid':e>3000?'ready':x.status;return x}
+  if(method==='GET')return mem.pagos;
+  const ref='COB-'+Math.floor(Math.random()*10000);
+  const x={id:String(now),reference:ref,amount:b.amount,note:b.note,status:'started',t:now,qr:'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=PAGO-'+ref};
+  mem.pagos.unshift(x);return x}
+ if(r==='auth'){
+  mem.tokens=mem.tokens||{};
+  for(const k in mem.tokens)if(mem.tokens[k].exp<now-36e5)delete mem.tokens[k];
+  const rnd=()=>Array.from({length:40},()=>Math.floor(Math.random()*16).toString(16)).join('');
+  const mint=()=>{const a=rnd(),rf=rnd();mem.tokens[a]={exp:now+6e5,rf};return{access_token:a,refresh_token:rf,token_type:'Bearer',expires_in:600,expires_at:new Date(now+6e5).toISOString()}};
+  if(b.refresh_token){if(!Object.values(mem.tokens).some(t=>t.rf===b.refresh_token))fail(401,'El refresh token no es válido.');return mint()}
+  if(!b.client_id||!b.client_secret||!b.username||!b.password)fail(400,'Faltan datos: client_id, client_secret, correo y contraseña.');
+  return mint()}
+ if(r==='factus'){
+  if(!(mem.tokens?.[tok]?.exp>now))fail(401,'El token no es válido o ya venció. Genera uno nuevo.');
+  return{data:[{id:8,document:'Factura de venta',prefix:'SETP',current:mem.n}]}}
+ fail(404,'Ruta no encontrada');
+}
+
+/* ---------- Capa de datos unificada ---------- */
+async function api(path,method='GET',body){
+ if(!path.startsWith('/api/auth'))await ensureToken();
+
+ if(live){
+  let r;
+  try{r=await fetch(base+path,{method,headers:{'Content-Type':'application/json',...(ftOk()?{'X-Factus-Token':ft.t}:{}),...(akey?{'X-API-Key':akey}:{})},body:body?JSON.stringify(body):undefined})}
+  catch{throw new Error('No se pudo conectar con el servidor '+base)}
+  const d=r.status===204?{}:await r.json().catch(()=>null);
+  if(!r.ok){const e=new Error(d?.message||r.statusText);e.status=r.status;e.code=d?.code;throw e}
+  return d;
+ }
+
+ if(cloud){
+  return await mongoApi(path,method,body);
+ }
+
+ const r=mock(path,method,body,ftOk()?ft.t:null);
+ persist();
+ return JSON.parse(JSON.stringify(r));
+}
+
+async function mongoApi(path,method,body){
+ const p=path.split('/').filter(Boolean).slice(1);
+ const r=p[0], id=p[1], now=Date.now();
+ const fail=(s,m)=>{const e=new Error(m);e.status=s;throw e};
+
+ if(r==='customers'){
+  if(p[1]==='search'){
+   const c=await mongoFindOne('clientes',{identification:p[2]});
+   return c||fail(404,'Cliente no encontrado');
+  }
+  if(method==='DELETE'){await mongoDelete('clientes',{id});return{}}
+  if(method==='GET')return await mongoFind('clientes',{},{names:1});
+  const ex=await mongoFindOne('clientes',{identification:body.identification});
+  if(ex){
+   const updated={...ex,...body,id:ex.id};
+   await mongoReplace('clientes',{id:ex.id},updated);
+   return updated;
+  }
+  const n={...body,id:String(now),created_at:new Date().toISOString()};
+  await mongoInsert('clientes',n);
+  return n;
+ }
+
+ if(r==='products'){
+  if(method==='DELETE'){await mongoDelete('productos',{id});return{}}
+  if(method==='GET')return await mongoFind('productos',{},{name:1});
+  const ex=await mongoFindOne('productos',{code:body.code});
+  if(ex){
+   const pr={...ex,...body,id:ex.id};
+   await mongoReplace('productos',{id:ex.id},pr);
+   return pr;
+  }
+  const pr={...body,id:String(now),created_at:new Date().toISOString()};
+  await mongoInsert('productos',pr);
+  return pr;
+ }
+
+ if(r==='bills'){
+  if(method==='GET'){
+   const rows=await mongoFind('facturas',{},{created_at:-1});
+   return{rows,lastPage:1};
+  }
+  let n=1;
+  const cfg=await mongoFindOne('config',{id:'app'});
+  if(cfg&&typeof cfg.n==='number')n=cfg.n+1;
+  else if(mem.n)n=mem.n+1;
+  mem.n=n;
+  const f={
+   ...body,
+   id:String(now),
+   status:1,
+   created_at:new Date().toISOString(),
+   number:'MON-'+String(n).padStart(5,'0'),
+   mode:'mongo',
+   token:ftOk()?ft.t.slice(-6):undefined
+  };
+  await mongoInsert('facturas',f);
+  await mongoSaveConfig();
+  return{bill:f};
+ }
+
+ if(r==='collections'){
+  if(id){
+   const x=await mongoFindOne('pagos',{reference:id})||fail(404,'Pago no encontrado');
+   const e=now-(x.t||0);
+   if(p[2]==='confirm')x.status='paid';
+   else if(x.status!=='paid')x.status=e>8000?'paid':e>3000?'ready':x.status;
+   await mongoReplace('pagos',{reference:id},x);
+   return x;
+  }
+  if(method==='GET')return await mongoFind('pagos',{},{t:-1});
+  const ref='COB-'+Math.floor(Math.random()*10000);
+  const x={id:String(now),reference:ref,amount:body.amount,note:body.note||'',status:'started',t:now,qr:'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=PAGO-'+ref,created_at:new Date().toISOString()};
+  await mongoInsert('pagos',x);
+  return x;
+ }
+
+ if(r==='auth'){
+  const rnd=()=>Array.from({length:40},()=>Math.floor(Math.random()*16).toString(16)).join('');
+  const a=rnd(),rf=rnd();
+  const tok={access_token:a,refresh_token:rf,token_type:'Bearer',expires_in:600,expires_at:new Date(now+6e5).toISOString()};
+  if(body.refresh_token||(body.client_id&&body.client_secret&&body.username&&body.password)){
+   return tok;
+  }
+  fail(400,'Faltan datos de autenticación');
+ }
+
+ if(r==='factus'){
+  if(!ftOk())fail(401,'El token no es válido o ya venció. Genera uno nuevo.');
+  return{data:[{id:8,document:'Factura de venta',prefix:'SETP',current:mem.n||0}]};
+ }
+
+ fail(404,'Ruta no encontrada');
+}
+
+function setMode(){
+ let txt='Guardado en este navegador';
+ if(live)txt='Servidor: '+base;
+ else if(cloud)txt='MongoDB Atlas';
+ $('#mode').textContent=txt;
+}
+function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display='none',3200)}
+
+async function load(){
+ try{
+  if(cloud)await mongoLoadConfig();
+  const[c,p,f,g]=await Promise.all([
+   api('/api/customers'),
+   api('/api/products'),
+   api('/api/bills'),
+   api('/api/collections')
+  ]);
+  S.clientes=c;S.productos=p;S.facturas=f.rows||[];S.pagos=g;
+ }catch(e){toast('No se pudo cargar: '+e.message)}
+}
+
+/* ---------- Vistas ---------- */
+const V={};
+
+V.login=()=>`<h1>${(ftOk()||fcred)?'Configuración de API':'Bienvenido'}</h1>
+ <p class="sub">${(ftOk()||fcred)?'Actualiza tus credenciales.':'Configura tu token de Factus y la base de datos.'}</p>
+ ${keyPanel()}${tokenPanel()}${mongoPanel()}
+ ${(ftOk()||fcred||cloud) ? `<div style="margin-top:20px"><button class="btn" data-v="resumen">Volver al sistema</button></div>` : ''}`;
+
+V.resumen=()=>{
+ const tot=S.facturas.reduce((a,f)=>a+(f.total||0),0),pag=S.pagos.filter(p=>p.status==='paid').length;
+ return `<h1>Resumen</h1><p class="sub">Estado general de tu facturación.</p>
+ <div class="panel grid">
+  <div class="stat"><span>Clientes</span><strong>${S.clientes.length}</strong></div>
+  <div class="stat"><span>Productos</span><strong>${S.productos.length}</strong></div>
+  <div class="stat"><span>Facturas</span><strong>${S.facturas.length}</strong></div>
+  <div class="stat"><span>Total facturado</span><strong>${cop(tot)}</strong></div>
+  <div class="stat"><span>Cobros pagados</span><strong>${pag}</strong></div>
+ </div>
+ <div class="panel"><h2>Últimas facturas</h2>${billList(S.facturas.slice(0,5))}</div>
+
+ <div class="panel"><h2>Base de datos</h2>
+  <p class="sub" style="margin:0 0 12px">Puedes usar MongoDB Atlas (nube), un servidor Node, o solo este navegador.</p>
+  ${mongoPanel()}
+  <form id="cfg" style="margin-top:14px"><label>Servidor Node (opcional)<input name="u" value="${esc(base)}" placeholder="Vacío = no usar servidor"></label>
+  <button class="btn ghost">Guardar servidor</button></form>
+  <p class="help">${live?'Datos vienen del servidor Node.':cloud?'Datos se guardan en MongoDB Atlas.':'Todo se guarda solo en este navegador (localStorage).'}</p>
+ </div>
+
+ <div class="panel"><h2>Configuración</h2>
+  <button class="btn ghost" data-v="login">Ir a credenciales, token y MongoDB</button></div>`;
+};
+
+function keyPanel(){
+ if(!live)return '';
+ return `<div class="panel"><h2>Clave de API del servidor</h2>
+ <form id="fk"><label>Clave<input name="k" type="password" value="${esc(akey)}" autocomplete="off"></label><button class="btn ghost">Guardar clave</button></form></div>`;
+}
+
+function tokenPanel(){
+ const st=ftOk()?`Token activo ····${esc(ft.t.slice(-6))}, vence a las ${new Date(ft.exp).toLocaleTimeString('es-CO')}.`:'Sin token activo.';
+ return `<div class="panel"><h2>Token de Factus</h2>
+ <p class="sub">${st}</p>
+ <form id="ft2">
+  <label>Client ID<input name="client_id" value="${esc(fcred?.client_id||'')}" required></label>
+  <label>Client secret<input name="client_secret" type="password" value="${esc(fcred?.client_secret||'')}" required></label>
+  <label>Correo<input name="username" type="email" value="${esc(fcred?.username||'')}" required></label>
+  <label>Contraseña<input name="password" type="password" value="${esc(fcred?.password||'')}" required></label>
+  <button class="btn">Guardar y generar token</button>
+ </form>
+ ${live?`<form id="ft1" style="margin-top:12px"><label>O pega un token ya generado<input name="t" required autocomplete="off"></label><button class="btn ghost">Usar token</button></form>`:''}
+ <p style="margin:12px 0 0">
+  <button class="btn ghost" data-ftest="1">Probar token</button>
+  <button class="btn ghost" data-fclear="1">Olvidar token y credenciales</button>
+ </p>
+ <p class="help">Las credenciales se guardan en este navegador y también en MongoDB (si está configurado) para renovar el token automáticamente.</p></div>`;
+}
+
+function mongoPanel(){
+ const ok=mongoOk();
+ return `<div class="panel"><h2>MongoDB Atlas (nube)</h2>
+ <p class="sub">${ok?'Conectado a MongoDB Atlas. Los datos y tokens se guardan en la nube.':'Configura tu cluster de Atlas para guardar todo en la nube.'}</p>
+ <form id="fmongo">
+  <label>URL del endpoint Data API
+   <input name="url" value="${esc(mongo?.url||'')}" placeholder="https://data.mongodb-api.com/app/XXXX/endpoint/data/v1" required>
+  </label>
+  <label>API Key
+   <input name="key" type="password" value="${esc(mongo?.key||'')}" placeholder="Tu API Key de Data API" required>
+  </label>
+  <label>Data Source (nombre del cluster)
+   <input name="dataSource" value="${esc(mongo?.dataSource||'Cluster0')}" placeholder="Cluster0" required>
+  </label>
+  <label>Database
+   <input name="database" value="${esc(mongo?.database||'facturacion')}" placeholder="facturacion" required>
+  </label>
+  <button class="btn">${ok?'Actualizar conexión':'Conectar a MongoDB'}</button>
+  ${ok?`<button type="button" class="btn ghost" data-mclear="1">Desconectar</button>`:''}
+ </form>
+ <p class="help">
+  1. Crea cuenta gratis en <a href="https://www.mongodb.com/cloud/atlas" target="_blank" rel="noopener">MongoDB Atlas</a><br>
+  2. Crea un cluster (M0 gratuito)<br>
+  3. Ve a <b>App Services</b> → crea una App → habilita <b>Data API</b><br>
+  4. Copia la URL del endpoint y genera una API Key<br>
+  5. Pega los datos aquí. Se crearán las colecciones: <code>clientes</code>, <code>productos</code>, <code>facturas</code>, <code>pagos</code>, <code>config</code>
+ </p>
+ </div>`;
+}
+
+V.clientes=()=>`<h1>Clientes</h1><p class="sub">Si el documento ya existe, se actualiza el cliente.</p>
+ <div class="panel"><form id="fc">
+  <label>Documento<input name="identification" required></label>
+  <label>Nombre o razón social<input name="names" required></label>
+  <label>Correo<input name="email" type="email"></label>
+  <label>Teléfono<input name="phone"></label>
+  <button class="btn">Guardar cliente</button></form></div>
+ <div class="panel"><h2>${S.clientes.length} clientes</h2><div class="list">${S.clientes.map(c=>`<div><span>${esc(c.names)}<small>${esc(c.identification)}${c.email?' · '+esc(c.email):''}</small></span><span class="tag">${esc(c.phone||'Sin teléfono')}</span><button class="btn ghost" data-del="customers/${esc(c.id)}" style="padding:2px 8px">Eliminar</button></div>`).join('')||'<div class="empty">Aún no hay clientes.</div>'}</div></div>`;
+
+V.productos=()=>`<h1>Productos</h1><p class="sub">Los productos se usan al crear facturas.</p>
+ <div class="panel"><form id="fp">
+  <label>Código<input name="code" required></label>
+  <label>Nombre<input name="name" required></label>
+  <label>Precio (COP)<input name="price" type="number" min="0" step="any" required></label>
+  <label>IVA (%)<input name="tax_rate" type="number" min="0" max="100" value="19"></label>
+  <button class="btn">Guardar producto</button></form></div>
+ <div class="panel"><h2>${S.productos.length} productos</h2><div class="list">${S.productos.map(p=>`<div><span>${esc(p.name)}<small>${esc(p.code)} · IVA ${p.tax_rate??0}%</small></span><span class="num">${cop(p.price)} <button class="btn ghost" data-del="products/${esc(p.id)}" style="padding:2px 8px">Eliminar</button></span></div>`).join('')||'<div class="empty">Aún no hay productos.</div>'}</div></div>`;
+
+const calc=()=>{let s=0,t=0;cart.forEach(i=>{const l=i.price*i.quantity;s+=l;t+=l*i.tax_rate/100});return{s,t,total:s+t}};
+
+V.facturas=()=>{const k=calc();return `<h1>Facturas</h1><p class="sub">Busca al cliente, agrega productos y emite la factura.</p>
+ <div class="panel"><h2>Nueva factura</h2>
+  <form id="fs"><label>Documento del cliente<input name="doc" value="${esc(cust.identification||'')}"></label><button class="btn ghost">Buscar</button></form>
+  <div class="row" style="margin-top:10px">
+   <label>Nombre<input id="cn" value="${esc(cust.names||'')}"></label>
+   <label>Correo<input id="ce" type="email" value="${esc(cust.email||'')}"></label></div>
+  <form id="fa" style="margin-top:14px">
+   <label>Producto<select name="p">${S.productos.map(p=>`<option value="${esc(p.id)}">${esc(p.name)} — ${cop(p.price)}</option>`).join('')||'<option value="">Sin productos</option>'}</select></label>
+   <label style="flex:0 1 90px">Cantidad<input name="q" type="number" min="1" value="1"></label>
+   <button class="btn ghost" ${S.productos.length?'':'disabled'}>Agregar</button></form>
+  <div class="list" style="margin:12px 0">${cart.map((i,n)=>`<div><span>${esc(i.name)}<small>${i.quantity} × ${cop(i.price)} · IVA ${i.tax_rate}%</small></span><span class="num">${cop(i.price*i.quantity)} <button class="btn ghost" data-rm="${n}" style="padding:2px 8px">Quitar</button></span></div>`).join('')||'<div class="empty">La factura no tiene productos.</div>'}</div>
+  <div class="row"><label style="max-width:200px">Forma de pago<select id="pm"><option>Efectivo</option><option>Transferencia</option><option>Tarjeta</option></select></label>
+   <div class="totals"><div><span>Subtotal</span><span>${cop(k.s)}</span></div><div><span>IVA</span><span>${cop(k.t)}</span></div><div class="t"><span>Total</span><span>${cop(k.total)}</span></div></div></div>
+  <p style="text-align:right;margin:14px 0 0"><button class="btn" id="emit" ${cart.length?'':'disabled'}>Emitir factura</button></p></div>
+ <div class="panel"><h2>Facturas emitidas</h2>${billList(S.facturas)}</div>`};
+
+function billList(a){return `<div class="list">${a.map(f=>`<div><span>${esc(f.number)}<small>${esc(f.customer?.names||'Consumidor final')} · ${new Date(f.created_at).toLocaleDateString('es-CO')}</small></span><span class="num">${cop(f.total)} <span class="tag">${f.mode==='mongo'?'MongoDB':f.mode==='local'?(f.token?'Local · token ····'+esc(f.token):'Local'):f.status===1?'Validada':'Pendiente'}</span></span></div>`).join('')||'<div class="empty">Aún no hay facturas emitidas.</div>'}</div>`}
+
+const st={started:['Creado',1],ready:['Listo para pagar',1],paid:['Pagado',0]};
+V.cobros=()=>`<h1>Cobros con QR</h1><p class="sub">Genera un código QR y espera a que el cliente pague.</p>
+ <div class="panel"><form id="fq"><label>Monto (COP)<input name="amount" type="number" min="1" required></label>
+  <label>Nota<input name="note" placeholder="Ej. Pedido 24"></label><button class="btn">Generar QR</button></form></div>
+ <div id="pays">${S.pagos.map(payCard).join('')||'<div class="panel empty">Aún no hay cobros.</div>'}</div>`;
+
+function payCard(p){const[l,w]=st[p.status]||[p.status,1];return `<div class="panel qr" data-ref="${esc(p.reference)}">
+ ${p.status==='paid'?'':`<img src="${esc(p.qr)}" onerror="this.style.display='none'" alt="QR ${esc(p.reference)}">`}
+ <div><strong class="num" style="font-size:20px">${cop(p.amount)}</strong><br>
+  <small>${esc(p.reference)}${p.note?' · '+esc(p.note):''}</small><br>
+  <span class="tag${w?' w':''}">${l}</span>
+  ${p.status!=='paid'?`<button class="btn ghost" data-confirm="${esc(p.reference)}" style="margin-top:8px;padding:4px 10px">Confirmar pago</button>`:''}
+ </div></div>`}
+
+/* ---------- Render y eventos ---------- */
+function render(){
+ clearTimers();
+ $('#main').innerHTML=V[view]?V[view]():'<p class="empty">Vista no encontrada</p>';
+ document.querySelectorAll('nav button').forEach(b=>b.setAttribute('aria-current',b.dataset.v===view?'true':'false'));
+ setMode();
+ if(view==='cobros')startPoll();
+}
+function clearTimers(){timers.forEach(clearInterval);timers=[]}
+function startPoll(){
+ timers.push(setInterval(async()=>{
+  try{
+   const g=await api('/api/collections');
+   S.pagos=g;
+   const pays=$('#pays');
+   if(pays)pays.innerHTML=S.pagos.map(payCard).join('')||'<div class="panel empty">Aún no hay cobros.</div>';
+  }catch{}
+ },4000));
+}
+
+async function go(v){
+ view=v;
+ if(v!=='login')await load();
+ render();
+}
+
+document.body.addEventListener('click',async e=>{
+ const t=e.target.closest('[data-v],[data-del],[data-rm],[data-confirm],[data-ftest],[data-fclear],[data-mclear],#emit');
+ if(!t)return;
+ if(t.dataset.v){e.preventDefault();go(t.dataset.v);return}
+ if(t.dataset.del){
+  e.preventDefault();
+  if(!confirm('¿Eliminar?'))return;
+  try{await api('/api/'+t.dataset.del,'DELETE');toast('Eliminado');await load();render()}catch(err){toast(err.message)}
+  return}
+ if(t.dataset.rm!=null){cart.splice(+t.dataset.rm,1);render();return}
+ if(t.dataset.confirm){
+  e.preventDefault();
+  try{await api('/api/collections/'+t.dataset.confirm+'/confirm','POST');toast('Pago confirmado');await load();render()}catch(err){toast(err.message)}
+  return}
+ if(t.dataset.ftest){
+  e.preventDefault();
+  try{await ensureToken();const r=await api('/api/factus/documents');toast('Token OK · '+((r.data&&r.data[0]&&r.data[0].document)||'OK'))}catch(err){toast('Error: '+err.message)}
+  return}
+ if(t.dataset.fclear){
+  e.preventDefault();
+  ft=null;fcred=null;store.set('ftoken','');store.set('fcred','');
+  if(cloud)await mongoSaveConfig().catch(()=>{});
+  toast('Credenciales borradas');render();return}
+ if(t.dataset.mclear){
+  e.preventDefault();
+  mongo=null;cloud=false;store.set('mongo','');
+  toast('MongoDB desconectado. Usando almacenamiento local.');render();return}
+ if(t.id==='emit'){
+  e.preventDefault();
+  if(!cart.length)return;
+  const names=$('#cn')?.value||cust.names||'Consumidor final';
+  const email=$('#ce')?.value||cust.email||'';
+  const k=calc();
+  const body={
+   customer:{identification:cust.identification||'222222222222',names,email},
+   items:cart.map(i=>({code:i.code,name:i.name,price:i.price,quantity:i.quantity,tax_rate:i.tax_rate})),
+   payment_method:$('#pm')?.value||'Efectivo',
+   total:k.total,subtotal:k.s,tax:k.t
+  };
+  try{
+   const r=await api('/api/bills','POST',body);
+   toast('Factura '+r.bill.number+' emitida');
+   cart=[];cust={};
+   await load();render();
+  }catch(err){toast(err.message)}
+ }
+});
+
+document.body.addEventListener('submit',async e=>{
+ e.preventDefault();
+ const f=e.target;
+ try{
+  if(f.id==='fc'){
+   const b=Object.fromEntries(new FormData(f));
+   await api('/api/customers','POST',b);
+   toast('Cliente guardado');f.reset();await load();render();
+  }else if(f.id==='fp'){
+   const b=Object.fromEntries(new FormData(f));
+   b.price=+b.price;b.tax_rate=+b.tax_rate||0;
+   await api('/api/products','POST',b);
+   toast('Producto guardado');f.reset();await load();render();
+  }else if(f.id==='fs'){
+   const doc=f.doc.value.trim();
+   if(!doc)return;
+   try{
+    const c=await api('/api/customers/search/'+encodeURIComponent(doc));
+    cust=c;toast('Cliente encontrado');
+   }catch{
+    cust={identification:doc};toast('Cliente nuevo');
+   }
+   render();
+  }else if(f.id==='fa'){
+   const id=f.p.value,q=+f.q.value||1;
+   const p=S.productos.find(x=>x.id===id);
+   if(!p)return;
+   const ex=cart.find(i=>i.id===id);
+   if(ex)ex.quantity+=q;else cart.push({...p,quantity:q});
+   render();
+  }else if(f.id==='fq'){
+   const b=Object.fromEntries(new FormData(f));
+   b.amount=+b.amount;
+   await api('/api/collections','POST',b);
+   toast('QR generado');f.reset();await load();render();
+  }else if(f.id==='cfg'){
+   const u=f.u.value.trim();
+   base=u;live=!!u;store.set('apiBase',u||'local');
+   toast(live?'Servidor: '+u:'Servidor desactivado');await load();render();
+  }else if(f.id==='fk'){
+   akey=f.k.value;store.set('akey',akey);toast('Clave guardada');render();
+  }else if(f.id==='ft2'){
+   const b=Object.fromEntries(new FormData(f));
+   fcred=b;store.set('fcred',JSON.stringify(b));
+   await newToken(b);toast('Token generado');render();
+  }else if(f.id==='ft1'){
+   const t=f.t.value.trim();
+   ft={t,r:null,exp:Date.now()+36e5};store.set('ftoken',JSON.stringify(ft));
+   if(cloud)await mongoSaveConfig();
+   toast('Token guardado');render();
+  }else if(f.id==='fmongo'){
+   const b=Object.fromEntries(new FormData(f));
+   mongo={url:b.url.trim(),key:b.key.trim(),dataSource:b.dataSource.trim()||'Cluster0',database:b.database.trim()||'facturacion'};
+   store.set('mongo',JSON.stringify(mongo));
+   cloud=true;
+   try{
+    await mongoFind('config',{},{},1);
+    toast('Conectado a MongoDB Atlas correctamente');
+    await mongoLoadConfig();
+    await load();
+   }catch(err){
+    toast('Conexión guardada, pero hubo un error al probar: '+err.message);
+   }
+   render();
+  }
+ }catch(err){toast(err.message)}
+});
+
+/* Inicio */
+(async()=>{
+ setMode();
+ cloud=mongoOk();
+ if(cloud){
+  try{await mongoLoadConfig()}catch(e){console.warn('No se pudo cargar config de Mongo',e)}
+ }
+ if(!ftOk()&&!fcred&&!live&&!cloud){view='login';render();return}
+ await load();
+ render();
+})();
+</script>
+</body>
+</html>
